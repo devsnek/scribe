@@ -47,12 +47,13 @@ const CHANNELS = new Map();
 const SILENCE = Buffer.alloc(3840, 0);
 
 class UserState {
-  constructor(connection, member) {
+  constructor(channelState, member) {
+    this.channelState = channelState;
     this.member = member;
     this.recognizeStream = undefined;
     this.recognizeInterval = undefined;
 
-    const userStream = connection.receiver.createStream(member.user, {
+    const userStream = channelState.connection.receiver.createStream(member.user, {
       mode: 'pcm',
       end: 'manual',
     });
@@ -124,8 +125,14 @@ class UserState {
         console.error(error);
         return;
       }
-      if (results) {
-        console.log(this.member.displayName, results[0].alternatives[0].transcript, results[0].isFinal);
+      if (results && results[0].isFinal) {
+        const text = results[0].alternatives[0].transcript;
+        if (text) {
+          this.channelState.webhook.send(text, {
+            username: this.member.displayName,
+            avatarURL: this.member.user.displayAvatarURL(),
+          });
+        }
       }
     });
 
@@ -179,8 +186,9 @@ class UserState {
 }
 
 class ChannelState {
-  constructor(connection) {
+  constructor(connection, webhook) {
     this.connection = connection;
+    this.webhook = webhook;
     this.channelID = this.connection.channel.id;
     this.states = new Map();
 
@@ -192,7 +200,7 @@ class ChannelState {
     this.connection.on('speaking', (user, speaking) => {
       if (!this.states.has(user.id)) {
         const member = this.connection.channel.guild.members.cache.get(user.id);
-        this.states.set(user.id, new UserState(this.connection, member));
+        this.states.set(user.id, new UserState(this, member));
       }
       const userState = this.states.get(user.id);
       if (speaking.bitfield !== 0) {
@@ -215,6 +223,7 @@ class ChannelState {
   }
 
   close() {
+    this.webhook.delete('Transcription completed');
     this.states.forEach((s) => {
       s.close();
     });
@@ -262,8 +271,12 @@ client.ws.on('INTERACTION_CREATE', (interaction) => {
           throw new Error('Please join a voice channel');
         }
         if (!CHANNELS.has(member.voice.channel.id)) {
+          const webhook = await guild.channels.cache.get(interaction.channel_id)
+            .createWebhook('Scribe', {
+              reason: `Transcription of ${member.voice.channel.name}`,
+            });
           const connection = await member.voice.channel.join();
-          const state = new ChannelState(connection);
+          const state = new ChannelState(connection, webhook);
           CHANNELS.set(member.voice.channel.id, state);
           connection.setSpeaking(0);
         }
