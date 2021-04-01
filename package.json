@@ -1,0 +1,14 @@
+{
+  "dependencies": {
+    "@discordjs/opus": "^0.5.0",
+    "@google-cloud/speech": "^4.4.0",
+    "discord.js": "github:discordjs/discord.js",
+    "dotenv": "^8.2.0"
+  },
+  "name": "scribe",
+  "version": "1.0.0",
+  "main": "index.js",
+  "author": "snek",
+  "license": "MIT",
+  "description": ""
+}
