@@ -2,12 +2,13 @@
 
 require('dotenv').config();
 
-const stream = require('stream');
+const util = require('util');
 const discord = require('discord.js');
 const speech = require('@google-cloud/speech');
 
 const STREAMING_LIMIT = 290000;
-const DEBUG_STREAMS = !!process.env.DEBUG_STREAMS;
+
+const debug = util.debuglog('streams');
 
 const speechClient = new speech.SpeechClient();
 const client = new discord.Client({
@@ -44,8 +45,6 @@ client.on('guildCreate', (guild) => {
 
 const CHANNELS = new Map();
 
-const SILENCE = Buffer.alloc(3840, 0);
-
 class UserState {
   constructor(channelState, member) {
     this.channelState = channelState;
@@ -58,41 +57,10 @@ class UserState {
       end: 'manual',
     });
     this.stream = userStream;
-
-    /*
-    let need = false;
-    setInterval(() => {
-      if (need) {
-        need = false;
-        this.stream.push(SILENCE);
-      }
-    }, 31);
-    this.stream = new stream.Readable({
-      read(size) {
-        const chunk = userStream.read();
-        if (chunk === null) {
-          need = true;
-        } else {
-          need = false;
-          this.push(chunk);
-        }
-      },
-    });
-
-    this.recognizeStream = this.createRecognizeStream();
-    this.stream.pipe(this.recognizeStream);
-    this.recognizeInterval = setInterval(() => {
-      this.stopRecognizeStream(false);
-      this.recognizeStream = this.createRecognizeStream();
-      this.stream.pipe(this.recognizeStream);
-    }, STREAMING_LIMIT - 1);
-    */
   }
 
   createRecognizeStream() {
-    if (DEBUG_STREAMS) {
-      console.log(this.member.displayName, 'CREATE STREAM');
-    }
+    debug(this.member.displayName, 'CREATE STREAM');
 
     const recognizeStream = speechClient.streamingRecognize({
       config: {
@@ -143,9 +111,7 @@ class UserState {
     if (!this.recognizeStream) {
       return;
     }
-    if (DEBUG_STREAMS) {
-      console.log(this.member.displayName, 'DESTROY STREAM');
-    }
+    debug(this.member.displayName, 'DESTROY STREAM');
     if (clear) {
       clearInterval(this.recognizeInterval);
     }
@@ -178,10 +144,14 @@ class UserState {
   close() {
     try {
       this.stopRecognizeStream();
-    } catch {}
+    } catch {
+      // noop
+    }
     try {
       this.stream.end();
-    } catch {}
+    } catch {
+      // noop
+    }
   }
 }
 
